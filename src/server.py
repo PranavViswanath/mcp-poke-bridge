@@ -53,25 +53,7 @@ async def _call_poke(payload: Dict[str, Any]) -> Dict[str, Any]:
         return response.json()
 
 
-@mcp.tool(description="Forward a chat message and context from the frontend to Poke and return the response")
-async def forward_message(
-    conversation_id: str,
-    user_id: str,
-    message: str,
-    picks_context: Dict[str, Any],
-    frontend_token: str,
-) -> Dict[str, Any]:
-    if FRONTEND_SHARED_SECRET and frontend_token != FRONTEND_SHARED_SECRET:
-        raise PermissionError("Invalid frontend token")
-
-    # Align with inbound SMS webhook shape
-    payload = {"message": message}
-
-    poke_response = await _call_poke(payload)
-    return {
-        "conversation_id": conversation_id,
-        "response": poke_response,
-    }
+last_response: Dict[str, Any] | None = None
 
 
 @mcp.tool(description="Simple health check to verify server readiness")
@@ -79,55 +61,31 @@ def health() -> Dict[str, str]:
     return {"status": "ok", "environment": os.environ.get("ENVIRONMENT", "development")}
 
 
-@mcp.tool(description="Send a test message to Poke for testing the bridge")
-async def test_poke_message(message: str) -> Dict[str, Any]:
-    """Send a simple test message to Poke and return the response"""
+@mcp.tool(description="Send a message to Poke and record the latest response")
+async def message_poke(message: str) -> Dict[str, Any]:
+    """Send a message to Poke and return the immediate API response. Also stores it as last_response."""
+    global last_response
     payload = {"message": message}
-    
     try:
         poke_response = await _call_poke(payload)
-        return {
+        last_response = {
             "status": "success",
             "sent_message": message,
             "poke_response": poke_response,
-            "timestamp": datetime.datetime.utcnow().isoformat()
+            "timestamp": datetime.datetime.utcnow().isoformat(),
         }
     except Exception as e:
-        return {
+        last_response = {
             "status": "error",
             "sent_message": message,
             "error": str(e),
-            "timestamp": datetime.datetime.utcnow().isoformat()
+            "timestamp": datetime.datetime.utcnow().isoformat(),
         }
+    return last_response
 
-
-@mcp.tool(description="Send a raw JSON payload to Poke inbound SMS webhook for debugging")
-async def send_raw_to_poke(payload: Dict[str, Any]) -> Dict[str, Any]:
-    try:
-        poke_response = await _call_poke(payload)
-        return {"status": "success", "payload": payload, "poke_response": poke_response}
-    except Exception as e:
-        return {"status": "error", "payload": payload, "error": str(e)}
-
-
-# Minimal in-memory holder for the most recent inbound payload (no history)
-last_inbound: Dict[str, Any] | None = None
-
-
-@mcp.tool(description="Receive a message/payload from Poke (called by Poke) and return it")
-def receive_from_poke(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Poke calls this to deliver inbound replies. Returns it and updates a single last value."""
-    global last_inbound
-    last_inbound = {
-        "timestamp": datetime.datetime.utcnow().isoformat(),
-        "payload": payload,
-    }
-    return {"status": "ok", "received": last_inbound}
-
-
-@mcp.tool(description="Get the most recent inbound payload delivered by Poke")
-def get_last_inbound() -> Dict[str, Any]:
-    return {"last_inbound": last_inbound}
+@mcp.tool(description="Get the most recent response from message_poke")
+def get_response() -> Dict[str, Any]:
+    return {"last_response": last_response}
 
 
 if __name__ == "__main__":
