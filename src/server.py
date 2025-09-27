@@ -11,6 +11,7 @@ import datetime
 import httpx
 from dotenv import load_dotenv
 from fastmcp import FastMCP
+from fastapi import FastAPI, Request
 
 
 # Try load_dotenv first, fallback to manual loading if needed (Windows BOM issue)
@@ -41,7 +42,16 @@ if POKE_API_KEY is None:
 mcp = FastMCP("PrizePicks Poke Bridge")
 
 
-# No FastAPI routes; Poke will connect to the MCP endpoint directly.
+# Expose a FastAPI app so we can accept webhooks from Poke
+try:
+    app = mcp.app  # FastMCP usually exposes its FastAPI app here
+except AttributeError:
+    app = FastAPI()
+    # Best-effort: attach for runtimes that read mcp.app
+    try:
+        setattr(mcp, "app", app)
+    except Exception:
+        pass
 
 
 async def _call_poke(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -86,6 +96,28 @@ async def message_poke(message: str) -> Dict[str, Any]:
 @mcp.tool(description="Get the most recent response from message_poke")
 def get_response() -> Dict[str, Any]:
     return {"last_response": last_response}
+
+
+@app.post("/webhook")
+async def poke_webhook(request: Request) -> Dict[str, Any]:
+    """Webhook endpoint for asynchronous responses from Poke.
+
+    Poke should POST JSON here when it generates a reply (e.g., a WhatsApp reply).
+    We store the payload in-memory so `get_response` can surface it.
+    """
+    global last_response
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {"raw_body": (await request.body()).decode("utf-8", errors="replace")}
+
+    last_response = {
+        "status": "received",
+        "source": "poke_webhook",
+        "poke_payload": payload,
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+    }
+    return {"ok": True}
 
 
 if __name__ == "__main__":
