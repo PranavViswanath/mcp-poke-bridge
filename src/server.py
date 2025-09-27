@@ -110,6 +110,26 @@ async def send_raw_to_poke(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": "error", "payload": payload, "error": str(e)}
 
 
+# Minimal in-memory holder for the most recent inbound payload (no history)
+last_inbound: Dict[str, Any] | None = None
+
+
+@mcp.tool(description="Receive a message/payload from Poke (called by Poke) and return it")
+def receive_from_poke(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Poke calls this to deliver inbound replies. Returns it and updates a single last value."""
+    global last_inbound
+    last_inbound = {
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "payload": payload,
+    }
+    return {"status": "ok", "received": last_inbound}
+
+
+@mcp.tool(description="Get the most recent inbound payload delivered by Poke")
+def get_last_inbound() -> Dict[str, Any]:
+    return {"last_inbound": last_inbound}
+
+
 if __name__ == "__main__":
     PORT = int(os.environ.get("PORT", 8000))
     HOST = "0.0.0.0"
