@@ -16,6 +16,7 @@ cd mcp-server-template
 conda create -n mcp-server python=3.13
 conda activate mcp-server
 pip install -r requirements.txt
+cp .env.example .env
 ```
 
 ### Test
@@ -24,6 +25,14 @@ pip install -r requirements.txt
 python src/server.py
 # then in another terminal run:
 npx @modelcontextprotocol/inspector
+```
+
+Ensure `.env` contains:
+
+```
+POKE_API_KEY=your_poke_api_key
+POKE_API_BASE_URL=https://poke.com/api/v1
+FRONTEND_SHARED_SECRET=your_shared_secret
 ```
 
 Open http://localhost:3000 and connect to `http://localhost:8000/mcp` using "Streamable HTTP" transport (NOTE THE `/mcp`!).
